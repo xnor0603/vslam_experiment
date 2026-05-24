@@ -1,0 +1,3 @@
+preset,run,cmd_dist_m,ekf_forward_m,ekf_lateral_m,ekf_alt_err_m,gt_dx_enu,gt_dy_enu,gt_dz_enu,gt_total_dist_m,ekf_vs_cmd_err_m,gt_vs_cmd_err_m,ekf_vs_gt_err_m,log_path
+rtk_fixed,1,5.0,,,,0.0,0.0,0.0,0.0,,-5.0,,/tmp/exp_rtk_fixed_r1.log
+rtk_float,1,5.0,,,,0.0,0.0,0.0,0.0,,-5.0,,/tmp/exp_rtk_float_r1.log

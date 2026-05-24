@@ -156,16 +156,24 @@ class ForwardExperiment(Node):
         t_phase = self.phase_tick * 0.05
 
         # 全程必須持續發 OCM heartbeat 與當前 setpoint，否則 PX4 會踢出 Offboard
-        if self.phase != 'INIT':
+        # LAND 階段必須停止發 OFFBOARD 心跳，讓 PX4 切到 AUTO.LAND 安全降落
+        if self.phase not in ('INIT', 'LAND'):
             self.send_ocm()
             self.send_setpoint(self.target_x, self.target_y, self.target_z, self.target_yaw)
 
         # ─── INIT：等 EKF + Preflight ──────────────────────────────────
+        # SITL 中 preflight_ok 永遠 false（沒 RC），改為「local_ready 後再等 EKF 收斂 30s」
+        sitl_min_wait = 30.0
         if self.phase == 'INIT':
-            if t_phase > 30.0:
-                self.get_logger().error('30s 內未拿到 local_pos / preflight，放棄')
-                rclpy.shutdown(); return
-            if self.local_ready and self.preflight_ok:
+            if t_phase > 90.0:
+                self.get_logger().error('90s 內未拿到 local_pos / preflight，放棄')
+                raise SystemExit(1)
+            sitl_ekf_ready = self.local_ready and t_phase >= sitl_min_wait
+            real_ready    = self.local_ready and self.preflight_ok
+            # SITL 模式：強制等 EKF 收斂，不管 preflight_ok（COM_RC_IN_MODE=1 會讓它過早變 true）
+            # Real 模式：用原本 preflight 邏輯
+            ready = sitl_ekf_ready if self.sitl_mode else real_ready
+            if ready:
                 # 鎖定起飛錨點
                 self.takeoff_x = self.cur_xyz[0]
                 self.takeoff_y = self.cur_xyz[1]
@@ -180,22 +188,20 @@ class ForwardExperiment(Node):
                 self.goto('ARM')
             return
 
-        # ─── ARM：先送 5 個 OCM+SP 再切 Offboard 再 Arm ────────────────
+        # ─── ARM：retry loop 風格（對齊 real_drone_node.perform_safety_takeoff）
+        # tick 1~20  : 持續發 OCM+SP 同時每 tick 嘗試切 OFFBOARD（最多送 20 次）
+        # tick 21~40 : 持續發 OCM+SP 同時每 tick 嘗試 ARM（最多送 20 次）
         if self.phase == 'ARM':
-            if self.phase_tick == 1:
-                # 已經在 tick 開頭送了 OCM+SP，再多送幾次模擬 real_drone_node 起飛流程
-                pass
-            if self.phase_tick == 20:  # 1s 後切 Offboard
+            if 1 <= self.phase_tick <= 20:
                 self.send_vehicle_cmd(VehicleCommand.VEHICLE_CMD_DO_SET_MODE, 1.0, 6.0)
-            if self.phase_tick == 40:  # 2s 後 Arm
+            if 21 <= self.phase_tick <= 40 and not self.armed:
                 self.send_vehicle_cmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 1.0)
-            if self.phase_tick > 60 and self.armed:
-                # 設定 takeoff 高度 setpoint，下一個 tick 開始爬升
+            if self.phase_tick > 40 and self.armed:
                 self.target_z = self.cur_xyz[2] - self.takeoff_alt  # NED z 負 = 上
                 self.goto('TAKEOFF')
-            elif self.phase_tick > 200:  # 10s 還沒 ARM 放棄
+            elif self.phase_tick > 200:  # 10s 都沒 ARM 放棄
                 self.get_logger().error('Arm 超時')
-                rclpy.shutdown()
+                raise SystemExit(1)
             return
 
         # ─── TAKEOFF：爬升至 takeoff_alt ──────────────────────────────
@@ -254,11 +260,11 @@ class ForwardExperiment(Node):
                 self.send_vehicle_cmd(VehicleCommand.VEHICLE_CMD_NAV_LAND)
             if not self.armed and self.phase_tick > 40:
                 self.get_logger().info(f'[{self.ns}] 已上鎖，實驗結束')
-                rclpy.shutdown()
+                raise SystemExit(0)
             elif self.phase_tick > 600:  # 30s
                 self.get_logger().warn('LAND 超時，強制 disarm')
                 self.send_vehicle_cmd(VehicleCommand.VEHICLE_CMD_COMPONENT_ARM_DISARM, 0.0)
-                rclpy.shutdown()
+                raise SystemExit(0)
 
 
 def main():
@@ -266,6 +272,8 @@ def main():
     node = ForwardExperiment()
     try:
         rclpy.spin(node)
+    except SystemExit:
+        pass
     finally:
         node.destroy_node()
         try: rclpy.shutdown()
