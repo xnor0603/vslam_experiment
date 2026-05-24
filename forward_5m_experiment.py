@@ -78,6 +78,7 @@ class ForwardExperiment(Node):
         self.cur_xyz = [0.0, 0.0, 0.0]
         self.cur_heading = 0.0
         self.local_ready = False
+        self.ground_z = None      # 第一筆 local_pos 的 z，當作地面參考算相對高度
 
         # 起飛時鎖定的位姿（forward 方向的物理錨點）
         self.takeoff_x = None
@@ -103,6 +104,8 @@ class ForwardExperiment(Node):
     def cb_local_pos(self, msg: VehicleLocalPosition):
         self.cur_xyz = [float(msg.x), float(msg.y), float(msg.z)]
         self.cur_heading = float(msg.heading)
+        if self.ground_z is None:
+            self.ground_z = float(msg.z)
         self.local_ready = bool(msg.xy_valid and msg.z_valid)
 
     # ── PX4 Publishers ──────────────────────────────────────────────────
@@ -160,6 +163,13 @@ class ForwardExperiment(Node):
         if self.phase not in ('INIT', 'LAND'):
             self.send_ocm()
             self.send_setpoint(self.target_x, self.target_y, self.target_z, self.target_yaw)
+
+        # 每秒在同一行顯示當前位置（stdout，不干擾 ROS log 的 stderr）
+        if self.tick % 20 == 0:
+            x, y, z = self.cur_xyz
+            alt = -(z - self.ground_z) if self.ground_z is not None else 0.0
+            print(f'\r  [pos] x={x:+.2f}  y={y:+.2f}  alt={alt:+.2f}m  phase={self.phase}    ',
+                  end='', flush=True)
 
         # ─── INIT：等 EKF + Preflight ──────────────────────────────────
         # SITL 中 preflight_ok 永遠 false（沒 RC），改為「local_ready 後再等 EKF 收斂 30s」
