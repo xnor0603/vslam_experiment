@@ -53,7 +53,14 @@ class ForwardExperiment(Node):
         self.cruise_speed = float(self.get_parameter('cruise_speed').value)
         self.hover_time   = float(self.get_parameter('hover_time').value)
         self.reach_thresh = float(self.get_parameter('reach_thresh').value)
-        self.ns           = f'px4_{self.drone_id}'
+        # drone_id=0 → SITL 單機模式，topic 無 namespace 前綴（/fmu/out/...）
+        # drone_id>0 → 多機 / 真機，topic 走 /px4_<id>/fmu/...
+        if self.drone_id == 0:
+            self.ns = 'sitl'
+            topic_prefix = ''
+        else:
+            self.ns = f'px4_{self.drone_id}'
+            topic_prefix = f'/{self.ns}'
 
         # ── QoS（與 real_drone_node 對齊）──────────────────────────────
         durability = DurabilityPolicy.TRANSIENT_LOCAL if self.sitl_mode else DurabilityPolicy.VOLATILE
@@ -62,11 +69,11 @@ class ForwardExperiment(Node):
                                   history=HistoryPolicy.KEEP_LAST, depth=1)
 
         # ── PX4 IO ──────────────────────────────────────────────────────
-        self.pub_ocm  = self.create_publisher(OffboardControlMode, f'/{self.ns}/fmu/in/offboard_control_mode', self.px4_qos)
-        self.pub_traj = self.create_publisher(TrajectorySetpoint,  f'/{self.ns}/fmu/in/trajectory_setpoint',   self.px4_qos)
-        self.pub_cmd  = self.create_publisher(VehicleCommand,      f'/{self.ns}/fmu/in/vehicle_command',       self.px4_qos)
-        self.create_subscription(VehicleStatus,        f'/{self.ns}/fmu/out/vehicle_status',         self.cb_status,    self.px4_qos)
-        self.create_subscription(VehicleLocalPosition, f'/{self.ns}/fmu/out/vehicle_local_position', self.cb_local_pos, self.px4_qos)
+        self.pub_ocm  = self.create_publisher(OffboardControlMode, f'{topic_prefix}/fmu/in/offboard_control_mode', self.px4_qos)
+        self.pub_traj = self.create_publisher(TrajectorySetpoint,  f'{topic_prefix}/fmu/in/trajectory_setpoint',   self.px4_qos)
+        self.pub_cmd  = self.create_publisher(VehicleCommand,      f'{topic_prefix}/fmu/in/vehicle_command',       self.px4_qos)
+        self.create_subscription(VehicleStatus,        f'{topic_prefix}/fmu/out/vehicle_status',         self.cb_status,    self.px4_qos)
+        self.create_subscription(VehicleLocalPosition, f'{topic_prefix}/fmu/out/vehicle_local_position', self.cb_local_pos, self.px4_qos)
 
         # ── State ───────────────────────────────────────────────────────
         self.phase = 'INIT'

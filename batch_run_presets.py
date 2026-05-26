@@ -79,7 +79,7 @@ def run_one_preset(preset_name, runs=1, takeoff_alt=2.0, forward_dist=5.0):
                str(Path(__file__).parent / 'forward_5m_experiment.py'),
                '--ros-args',
                '-p', 'sitl_mode:=true',
-               '-p', 'drone_id:=1',
+               '-p', 'drone_id:=0',          # SITL 單機 → topic 無 namespace
                '-p', f'takeoff_alt:={takeoff_alt}',
                '-p', f'forward_dist:={forward_dist}']
         env = os.environ.copy()
