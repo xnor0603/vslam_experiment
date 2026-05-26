@@ -10,8 +10,8 @@
     5. 結果寫入 CSV
 
 執行：
-  python3 batch_run_presets.py [preset1 preset2 ...]
-不指定就跑全部 preset。
+  python3 batch_run_presets.py [--runs N] [preset1 preset2 ...]
+不指定 preset 就跑全部；不指定 --runs 預設 1 次。
 """
 import csv
 import os
@@ -147,7 +147,13 @@ def run_one_preset(preset_name, runs=1, takeoff_alt=2.0, forward_dist=5.0):
 
 
 def main():
-    presets = sys.argv[1:] if len(sys.argv) > 1 else list(PRESETS.keys())
+    args = sys.argv[1:]
+    runs = 1
+    if '--runs' in args:
+        i = args.index('--runs')
+        runs = int(args[i+1])
+        args = args[:i] + args[i+2:]
+    presets = args if args else list(PRESETS.keys())
     out_dir = Path(__file__).parent / 'results'
     out_dir.mkdir(exist_ok=True)
     csv_path = out_dir / f"batch_{datetime.now():%Y%m%d_%H%M%S}.csv"
@@ -158,7 +164,7 @@ def main():
             print(f"skip unknown preset: {p}")
             continue
         try:
-            all_results += run_one_preset(p, runs=1)
+            all_results += run_one_preset(p, runs=runs)
         except Exception as e:
             print(f"!! preset {p} failed: {e}")
 

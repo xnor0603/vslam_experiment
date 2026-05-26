@@ -105,18 +105,17 @@ ros2 bag record -o ekf2_baseline_$(date +%Y%m%d_%H%M%S) \
 
 | preset | 對應場景 |
 |---|---|
-| `rtk_fixed` | RTK Fixed，open sky + base station |
-| `rtk_float` | RTK Float，收斂中 |
-| `sitl_default` | PX4 SITL 原廠預設（比真 M8N 還準） |
 | `m8n_open` | UBLOX M8N 開闊天空（典型 outdoor） |
 | `m8n_suburban` | 都市開闊（公園、低矮建物） |
-| `urban_canyon` | 都市峽谷（高樓間、多路徑嚴重） |
 | `tree_cover` | 樹冠遮蔽（低 SNR） |
+| `urban_canyon` | 都市峽谷（高樓間、多路徑嚴重） |
+
+只保留無 RTK 的真 M8N 等級檔位 — 我們要看的是 EKF2 在現實 GPS 品質下會差多少，RTK / SITL default 那種準度沒參考價值。
 
 單獨用作 CLI：
 
 ```bash
-python3 gps_presets.py rtk_fixed        # 套用一個 preset
+python3 gps_presets.py m8n_open         # 套用一個 preset
 python3 gps_presets.py                  # 不帶參數列出全部
 ```
 
@@ -125,11 +124,14 @@ python3 gps_presets.py                  # 不帶參數列出全部
 對每個 preset：套 preset → 採 Gazebo ground truth 起點 → 啟動 `forward_5m_experiment.py`（`sitl_mode:=true`） → 採終點 ground truth → regex 解 log 拿 EKF 報告 → 結果寫一列 CSV。
 
 ```bash
-# 跑全部 preset
+# 跑全部 preset，各 1 次
 python3 batch_run_presets.py
 
-# 只跑指定的（白名單）
-python3 batch_run_presets.py rtk_fixed m8n_open urban_canyon
+# 只跑指定的（白名單），各 1 次
+python3 batch_run_presets.py m8n_open urban_canyon
+
+# 對 m8n_open 跑 5 次（CSV 會有 5 列）
+python3 batch_run_presets.py --runs 5 m8n_open
 ```
 
 CSV 落在 `results/batch_<YYYYMMDD_HHMMSS>.csv`，欄位：
